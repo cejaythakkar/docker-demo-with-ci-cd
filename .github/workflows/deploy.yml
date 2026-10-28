@@ -1,4 +1,4 @@
-name: Build and Deploy MERN Stack to Azure
+name: Build and Deploy MERN Stack via Compose
 
 on:
   push:
@@ -21,21 +21,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 1. BUILD & PUSH CLIENT IMAGE
+      # 1. BUILD & PUSH CLIENT (With Build Args injected)
       - name: Build and Push Client Image
         uses: docker/build-push-action@v6
         with:
-          context: ./client # Points directly to your client folder containing its Dockerfile
+          context: ./client
           push: true
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-client:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-client:${{ github.sha }}
 
-      # 2. BUILD & PUSH SERVER IMAGE
+      # 2. BUILD & PUSH SERVER
       - name: Build and Push Server Image
         uses: docker/build-push-action@v6
         with:
-          context: ./server # Points directly to your server folder containing its Dockerfile
+          context: ./server
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-server:latest
@@ -45,26 +47,25 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Azure Server via SSH
+      - name: Deploy to Azure Server via Docker Compose
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Login to Docker Hub on the Azure VM
+            # Navigate to the folder where your project repository lives on the server
+            # (Change /home/azureuser/app to your actual project path)
+            cd /home/azureuser/app
+
+            # Pull down the latest changes to your docker-compose.yml file if needed
+            git pull origin main || true
+
+            # Authenticate with Docker Hub
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Pull down both updated images
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-client:latest
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-server:latest
+            # Pull down the updated images specified in docker-compose.yml
+            docker compose pull
 
-            # Clean up old container instances safely (both client and server)
-            docker stop mern-client-container mern-server-container || true
-            docker rm mern-client-container mern-server-container || true
-
-            # 1. Spin up the Node/Express backend Server (Mapped to port 5000)
-            docker run -d --name mern-server-container -p 5000:5000 ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-server:latest
-
-            # 2. Spin up the Frontend Client (Mapped to port 80)
-            docker run -d --name mern-client-container -p 80:80 ${{ secrets.DOCKERHUB_USERNAME }}/mern-app-client:latest
+            # Recreate containers safely, dropping dead instances and running in the background
+            docker compose up -d --remove-orphans

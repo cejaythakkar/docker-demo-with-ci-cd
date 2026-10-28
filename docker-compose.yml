@@ -1,8 +1,9 @@
+version: "3.8"
+
 services:
   server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+    # Pulls the image built by GitHub Actions
+    image: ${DOCKERHUB_USERNAME}/mern-app-server:latest
     environment:
       - PORT=${SERVER_PORT}
       - MONGODB_URI=${MONGODB_URI}
@@ -13,11 +14,8 @@ services:
       - "${SERVER_PORT}:${SERVER_PORT}"
 
   client:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=${VITE_API_URL}
+    # Pulls the image built by GitHub Actions
+    image: ${DOCKERHUB_USERNAME}/mern-app-client:latest
     depends_on:
       - server
     ports:

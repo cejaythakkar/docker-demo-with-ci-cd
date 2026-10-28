@@ -1,0 +1,65 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  CLIENT_DOCKER_IMAGE_NAME: "$DOCKER_USER/mern-app-client"
+  SERVER_DOCKER_IMAGE_NAME: "$DOCKER_USER/mern-app-server"
+
+build_and_push_docker:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  script:
+    # 1. Login to Docker Hub
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USER" --password-stdin
+
+    # 2. Build the image (Adjust the dot '.' if your Dockerfile is in a subfolder)
+    - docker build -t $CLIENT_DOCKER_IMAGE_NAME:latest -t $DOCKER_IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
+    - docker build -t $SERVER_DOCKER_IMAGE_NAME:latest -t $DOCKER_IMAGE_NAME:$CI_COMMIT_SHORT_SHA .
+
+    # 3. Push tags
+    - docker push $CLIENT_DOCKER_IMAGE_NAME:latest
+    - docker push $CLIENT_DOCKER_IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+    - docker push $SERVER_DOCKER_IMAGE_NAME:latest
+    - docker push $SERVER_DOCKER_IMAGE_NAME:$CI_COMMIT_SHORT_SHA
+  only:
+    - main
+
+deploy_to_server:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    # Install SSH client inside the runner environment
+    - apk update && apk add openssh-client
+
+    # Setup SSH agent and load your private key
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+
+    # Create the SSH config directory and disable strict host key checking
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+  script:
+    # Execute commands remotely on your target deployment server
+    - |
+      ssh $SERVER_USER@$SERVER_IP "
+        # 1. Login to Docker Hub on the target host server
+        echo '$DOCKER_PASSWORD' | docker login -u '$DOCKER_USER' --password-stdin
+
+        # 2. Pull down the freshly baked image
+        docker pull $CLIENT_DOCKER_IMAGE_NAME:latest
+        docker pull $SERVER_DOCKER_IMAGE_NAME:latest
+
+        # 3. Stop and tear down old containers running the old build
+        docker stop mern-client-container || true
+        docker rm mern-client-container || true
+
+        # 4. Spin up the new container with the updated image
+        docker run -d --name mern-client-container -p 80:80 $CLIENT_DOCKER_IMAGE_NAME:latest
+        docker run -d --name mern-client-container -p 80:80 $SERVER_DOCKER_IMAGE_NAME:latest
+      "
+  only:
+    - main

@@ -86,7 +86,7 @@ export default function App() {
         <header className="hero">
           <div>
             <p className="eyebrow">Docker Course Demo App</p>
-            <h1>MERN Product Dashboard v2</h1>
+            <h1>MERN Product Dashboard v3</h1>
             <p className="hero-text">
               This app is intentionally small so the course can stay focused on
               Docker, Compose, VPS deployment, and GitLab CI/CD.

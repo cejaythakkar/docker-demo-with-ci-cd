@@ -8,6 +8,7 @@ pipeline{
         VITE_API_URL="/api"
         CLIENT_PORT="80"
         MONGODB_URI="mongodb://mongo:27017/intro-to-docker"
+        DOCKERHUB_USERNAME="cejaythakkar07"
     }
 
     stages{
